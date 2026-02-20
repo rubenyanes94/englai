@@ -1,0 +1,8 @@
+{
+  "name": "Vene-English Academy",
+  "description": "Academia de inglés para venezolanos con tutores nativos de IA, certificaciones MCER y clases interactivas.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
