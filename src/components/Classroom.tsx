@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import React, { useState, useEffect } from 'react';
+import { GoogleGenAI } from '@google/genai';
 import { type User, CEFRLevel, type LevelCurriculum } from '../types';
 
 interface Props {
@@ -63,6 +63,16 @@ const CURRICULUMS: Record<CEFRLevel, LevelCurriculum> = {
   [CEFRLevel.C2]: { level: CEFRLevel.C2, title: "Maestría", description: "Nivel nativo.", modules: [] },
 };
 
+// Utilidad para asegurar que leemos la clave correctamente en Vite
+const getApiKey = () => {
+  const key = import.meta.env.VITE_API_KEY;
+  if (!key) {
+    console.error("No se encontró VITE_API_KEY en el archivo .env");
+    return null;
+  }
+  return key;
+};
+
 const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
   const [activeTab, setActiveTab] = useState<ClassroomTab>('video');
   const [status, setStatus] = useState<ClassroomState>('watching');
@@ -83,47 +93,38 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
   const currModule = currLevelData.modules[user.currentModuleIndex] || { title: "Evaluación", description: "Examen final" };
 
   useEffect(() => {
-    generateTutorImage();
+    // Usamos una imagen estática segura mientras configuras HeyGen o la API de imágenes
+    setTutorImage("https://ui-avatars.com/api/?name=Profesor+James&background=137fec&color=fff&size=512");
     generateContent();
   }, [user.level, user.currentModuleIndex]);
 
-  const generateTutorImage = async () => {
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: "A charismatic male English teacher named James, Disney/Pixar style, friendly, teaching in a classroom. High quality 3D render." }] },
-        config: { imageConfig: { aspectRatio: "16:9" } }
-      });
-      if (response?.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            setTutorImage(`data:image/png;base64,${part.inlineData.data}`);
-            break;
-          }
-        }
-      }
-    } catch (e) { console.error(e); }
-  };
-
   const generateContent = async () => {
+    const key = getApiKey();
+    if (!key) return;
+
     setIsTyping(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.VITE_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: key });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        // CORRECCIÓN: Usar el modelo estándar y estable de Gemini
+        model: 'gemini-2.5-flash',
         contents: `Genera el contenido para el Nivel ${user.level}, Módulo ${user.currentModuleIndex + 1}: "${currModule.title}". 
         Necesito:
-        1. 3 ejercicios de práctica (mix de multiple_choice, matching, fill_in_the_blank).
-        2. 3 preguntas de examen final.
-        Devuelve SOLO un JSON con las claves 'exercises' y 'exam'.`,
+        1. 3 ejercicios de práctica en un array llamado "exercises". El tipo debe ser 'multiple_choice' o 'fill_in_the_blank'.
+        2. 3 preguntas de examen final en un array llamado "exam" con opciones y la respuesta correcta.
+        Devuelve SOLO un JSON puro sin markdown con la estructura: { "exercises": [...], "exam": [...] }`,
         config: { responseMimeType: "application/json" }
       });
-      const data = JSON.parse(response.text || "{}");
+      
+      const text = response.text || "{}";
+      const data = JSON.parse(text);
       setExercises(data.exercises || []);
       setExamQuestions(data.exam || []);
-    } catch (e) { console.error(e); }
-    finally { setIsTyping(false); }
+    } catch (e) { 
+      console.error("Error generando contenido con Gemini:", e); 
+    } finally { 
+      setIsTyping(false); 
+    }
   };
 
   const handleVideoFinish = () => {
@@ -157,10 +158,10 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden w-full h-full max-w-md mx-auto relative shadow-2xl">
       {/* Header */}
       <header className="px-6 pt-12 pb-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50 backdrop-blur-xl z-50">
-        <button onClick={onExit} className="p-2 bg-white/5 rounded-full text-white/60 active:scale-90 transition-all">
+        <button onClick={onExit} className="p-2 bg-white/5 rounded-full text-white/60 active:scale-90 transition-all cursor-pointer">
           <span className="material-icons">close</span>
         </button>
         <div className="flex flex-col items-center">
@@ -173,7 +174,7 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
       </header>
 
       {/* Tabs */}
-      <div className="flex px-6 py-4 gap-2 bg-slate-900/50">
+      <div className="flex px-6 py-4 gap-2 bg-slate-900/50 z-40">
         {[
           { id: 'video', label: 'Lección Video', icon: 'play_circle' },
           { id: 'practice', label: 'Práctica', icon: 'psychology' },
@@ -182,10 +183,10 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as ClassroomTab)}
-            className={`flex-1 py-3 px-2 rounded-2xl flex flex-col items-center gap-1.5 transition-all border-2 ${
+            className={`flex-1 py-3 px-2 rounded-2xl flex flex-col items-center gap-1.5 transition-all border-2 cursor-pointer ${
               activeTab === tab.id 
               ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20' 
-              : 'bg-white/5 border-white/10 text-white/40'
+              : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
             }`}
           >
             <span className="material-icons text-xl">{tab.icon}</span>
@@ -195,15 +196,18 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
       </div>
 
       <main className="flex-1 flex flex-col overflow-hidden bg-white rounded-t-[3rem] relative z-10">
+        {/* TABS CONTENIDOS */}
+        
+        {/* TAB 1: VIDEO */}
         {activeTab === 'video' && (
           <div className="flex-1 flex flex-col p-8 space-y-6 overflow-y-auto">
             <div className="relative aspect-video rounded-[2rem] overflow-hidden bg-slate-900 shadow-2xl group">
-              {tutorImage && <img src={tutorImage} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-[10s]" />}
+              {tutorImage && <img src={tutorImage} alt="Tutor" className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-[10s]" />}
               <div className="absolute inset-0 flex items-center justify-center">
                 {!isPlaying ? (
                   <button 
                     onClick={() => setIsPlaying(true)}
-                    className="w-20 h-20 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 active:scale-90 transition-transform"
+                    className="w-20 h-20 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 active:scale-90 transition-transform cursor-pointer"
                   >
                     <span className="material-icons text-white text-4xl ml-1">play_arrow</span>
                   </button>
@@ -219,7 +223,7 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                 )}
               </div>
               
-              {/* Fake Progress Bar */}
+              {/* Fake Progress Bar (10 Minutos) */}
               <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20">
                 <div className={`h-full bg-primary transition-all duration-[600s] ease-linear ${isPlaying ? 'w-full' : 'w-0'}`} onTransitionEnd={handleVideoFinish}></div>
               </div>
@@ -248,18 +252,18 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
               </div>
             </div>
 
-            {videoProgress === 100 && (
-              <button 
-                onClick={() => { setActiveTab('practice'); setStatus('practicing'); }}
-                className="w-full py-5 bg-slate-900 text-white font-black rounded-[2rem] shadow-xl shadow-black/20 flex items-center justify-center gap-3 animate-in slide-in-from-bottom-4"
-              >
-                <span>Siguiente: Práctica Interactiva</span>
-                <span className="material-icons">arrow_forward</span>
-              </button>
-            )}
+            {/* Este botón aparece al terminar la lección */}
+            <button 
+              onClick={() => { setActiveTab('practice'); setStatus('practicing'); }}
+              className="w-full mt-auto py-5 bg-slate-900 text-white font-black rounded-[2rem] shadow-xl shadow-black/20 flex items-center justify-center gap-3 active:scale-95 transition-transform cursor-pointer"
+            >
+              <span>Ir a la Práctica Interactiva</span>
+              <span className="material-icons">arrow_forward</span>
+            </button>
           </div>
         )}
 
+        {/* TAB 2: PRÁCTICA */}
         {activeTab === 'practice' && (
           <div className="flex-1 flex flex-col p-8 space-y-6 overflow-y-auto">
             {exercises.length > 0 ? (
@@ -269,15 +273,15 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                   <span className="text-xs font-black text-slate-300">{currentExerciseIdx + 1} / {exercises.length}</span>
                 </div>
 
-                <div className="flex-1 flex flex-col justify-center text-center">
+                <div className="flex-1 flex flex-col">
                   <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 mb-8 shadow-inner relative overflow-hidden group">
                     <div className="absolute top-0 left-0 w-2 h-full bg-accent-orange opacity-10"></div>
-                    <p className="text-lg font-black text-slate-800 leading-relaxed">
+                    <p className="text-lg font-black text-slate-800 leading-relaxed text-center">
                       {exercises[currentExerciseIdx].question}
                     </p>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-3 mt-auto">
                     {exercises[currentExerciseIdx].type === 'multiple_choice' && exercises[currentExerciseIdx].options?.map((opt, i) => (
                       <button 
                         key={i} 
@@ -285,7 +289,7 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                           if (opt === exercises[currentExerciseIdx].correctAnswer) nextExercise();
                           else alert("¡Casi chamo! Intenta otra vez.");
                         }}
-                        className="w-full p-5 text-left bg-white border-2 border-slate-100 rounded-[1.5rem] font-bold text-slate-700 hover:border-accent-orange hover:bg-accent-orange/5 active:scale-95 transition-all flex justify-between items-center"
+                        className="w-full p-5 text-left bg-white border-2 border-slate-100 rounded-[1.5rem] font-bold text-slate-700 hover:border-accent-orange hover:bg-accent-orange/5 active:scale-95 transition-all flex justify-between items-center cursor-pointer"
                       >
                         <span>{opt}</span>
                         <span className="material-icons text-slate-100 group-hover:text-accent-orange">check_circle</span>
@@ -305,17 +309,7 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                             }
                           }}
                         />
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Presiona ENTER para enviar</p>
-                      </div>
-                    )}
-
-                    {exercises[currentExerciseIdx].type === 'matching' && (
-                      <div className="grid grid-cols-1 gap-2">
-                        <p className="text-xs text-slate-400 font-bold mb-4">Relaciona los conceptos correctos</p>
-                        {/* Simplificación para demo de matching */}
-                        <button onClick={nextExercise} className="w-full py-4 bg-accent-orange/10 text-accent-orange font-black rounded-2xl border-2 border-accent-orange/20">
-                          Completar Emparejamiento
-                        </button>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Presiona ENTER para enviar</p>
                       </div>
                     )}
                   </div>
@@ -324,12 +318,13 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center">
                 <div className="w-16 h-16 border-4 border-slate-100 border-t-primary rounded-full animate-spin mb-4"></div>
-                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">Generando Práctica...</p>
+                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">Generando Práctica IA...</p>
               </div>
             )}
           </div>
         )}
 
+        {/* TAB 3: EXAMEN */}
         {activeTab === 'exam' && (
           <div className="flex-1 flex flex-col p-8 space-y-6 overflow-y-auto">
             {status === 'passed' ? (
@@ -340,9 +335,11 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                 </div>
                 <h2 className="text-3xl font-black text-slate-900 mb-2">¡Módulo Superado!</h2>
                 <p className="text-sm text-slate-500 font-medium mb-10 max-w-xs">Increíble trabajo chamo. Has demostrado dominar los conceptos de {currModule.title}.</p>
+                
+                {/* CORRECCIÓN: Botón cerrado correctamente */}
                 <button 
                   onClick={() => { onCompleteModule(); onExit(); }}
-                  className="w-full py-5 bg-primary text-white font-black text-lg rounded-[2rem] shadow-2xl shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-3"
+                  className="w-full py-5 bg-primary text-white font-black text-lg rounded-[2rem] shadow-2xl shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer"
                 >
                   <span>Siguiente Módulo</span>
                   <span className="material-icons">arrow_forward</span>
@@ -365,17 +362,17 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
                   <div className="flex-1 flex flex-col">
                     <div className="p-8 bg-slate-900 text-white rounded-[2.5rem] mb-8 shadow-2xl relative overflow-hidden">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16"></div>
-                      <p className="text-lg font-bold leading-relaxed relative z-10">
+                      <p className="text-lg font-bold leading-relaxed relative z-10 text-center">
                         {examQuestions[currentExamIdx].text}
                       </p>
                     </div>
                     
-                    <div className="space-y-3">
+                    <div className="space-y-3 mt-auto">
                       {examQuestions[currentExamIdx].options.map((opt, i) => (
                         <button 
                           key={i} 
                           onClick={() => handleExamAnswer(opt)}
-                          className="w-full p-5 text-left bg-white border-2 border-slate-100 rounded-[1.5rem] font-bold text-slate-700 hover:border-primary hover:bg-primary/5 active:scale-95 transition-all flex justify-between items-center"
+                          className="w-full p-5 text-left bg-white border-2 border-slate-100 rounded-[1.5rem] font-bold text-slate-700 hover:border-primary hover:bg-primary/5 active:scale-95 transition-all flex justify-between items-center cursor-pointer"
                         >
                           <span>{opt}</span>
                           <span className="material-icons text-slate-100 group-hover:text-primary">check_circle</span>
@@ -394,9 +391,6 @@ const Classroom: React.FC<Props> = ({ user, onExit, onCompleteModule }) => {
           </div>
         )}
       </main>
-
-      {/* Bottom Accent */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-[430px] h-2 bg-primary z-[60] opacity-80"></div>
     </div>
   );
 };
