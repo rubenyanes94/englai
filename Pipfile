@@ -9,6 +9,8 @@ uvicorn = "*"
 sqlalchemy = "*"
 pydantic = "*"
 google-generativeai = "*"
+python-jose = {extras = ["cryptography"], version = "*"}
+passlib = {extras = ["bcrypt"], version = "*"}
 
 [dev-packages]
 
