@@ -8,9 +8,15 @@ fastapi = "*"
 uvicorn = "*"
 sqlalchemy = "*"
 pydantic = "*"
+pydantic-settings = "*"
 google-generativeai = "*"
 python-jose = {extras = ["cryptography"], version = "*"}
 passlib = {extras = ["bcrypt"], version = "*"}
+python-multipart = "*"
+psycopg2-binary = "*"
+python-dotenv = "*"
+alembic = "*"
+email-validator = "*"
 
 [dev-packages]
 
