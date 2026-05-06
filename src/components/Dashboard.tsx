@@ -17,7 +17,7 @@ const Dashboard: React.FC<Props> = ({ user, onJoinClass, onShowModules }) => {
             <img 
               alt="Profile" 
               className="relative w-14 h-14 rounded-full border-2 border-white object-cover shadow-sm" 
-              src="https://picsum.photos/seed/miguel_v/100/100" 
+              src={user.avatar || `https://picsum.photos/seed/${user.name?.replace(/\s+/g, '_')}/100/100`}
             />
             <div className="absolute -bottom-0.5 -right-0.5 bg-green-500 w-4 h-4 rounded-full border-2 border-white shadow-sm"></div>
           </div>

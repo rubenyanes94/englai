@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { type ViewState, type User, CEFRLevel, type Certification } from './types';
+import apiClient, { handleApiError } from './api/client';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import Classroom from './components/Classroom';
@@ -37,13 +38,60 @@ const INITIAL_USER_STATE: User = {
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('landing');
   const [pendingLevelChoice, setPendingLevelChoice] = useState<CEFRLevel | null>(null);
+  const [loading, setLoading] = useState(true);
   
+  // Inicializar usuario desde API o localStorage
   const [user, setUser] = useState<User>(() => {
+    // Si hay token, dejaremos que useEffect lo cargue de la API
+    if (apiClient.isAuthenticated()) {
+      return INITIAL_USER_STATE; // Placeholder hasta cargar
+    }
+    
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return JSON.parse(saved);
     return INITIAL_USER_STATE;
   });
 
+  // Al montar, cargar usuario desde API si hay token
+  useEffect(() => {
+    const loadUserFromApi = async () => {
+      if (apiClient.isAuthenticated()) {
+        try {
+          const userData = await apiClient.getUser();
+          
+          // Convertir respuesta de API a formato de User
+          const mappedUser: User = {
+            name: `${userData.first_name} ${userData.last_name}`,
+            avatar: userData.avatar,
+            level: userData.level as CEFRLevel,
+            currentModuleIndex: userData.current_module_index,
+            progress: userData.progress,
+            wordsLearned: userData.words_learned,
+            practiceHours: userData.practice_hours,
+            streak: userData.streak,
+            earnedCertificates: userData.certificates.map(cert => ({
+              id: cert.id,
+              level: cert.level as CEFRLevel,
+              name: cert.name,
+              date: cert.date,
+              issuer: cert.issuer
+            }))
+          };
+          
+          setUser(mappedUser);
+          setView('dashboard');
+        } catch (error) {
+          console.error('Error loading user:', handleApiError(error));
+          setView('landing');
+        }
+      }
+      setLoading(false);
+    };
+    
+    loadUserFromApi();
+  }, []);
+
+  // Guardar usuario en localStorage cuando cambia
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   }, [user]);
@@ -88,10 +136,18 @@ const App: React.FC = () => {
     navigate('auth');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiClient.logout();
+    } catch (error) {
+      console.error('Error during logout:', handleApiError(error));
+      // Igual limpiamos incluso si hay error
+      apiClient.clearToken();
+    }
+    
     localStorage.removeItem(STORAGE_KEY);
-    setUser(INITIAL_USER_STATE); // Restablecemos a Miguel o un estado base
-    navigate('landing'); // Volvemos a la landing page sin sesión activa
+    setUser(INITIAL_USER_STATE);
+    navigate('landing');
   };
 
   const handleModuleComplete = () => {

@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+import hashlib
+import secrets
 
 from config import get_settings
 from database import get_db
@@ -13,21 +14,43 @@ from schemas import TokenData
 
 settings = get_settings()
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
+def hash_password(password: str) -> str:
+    """Hash password using PBKDF2 with SHA256"""
+    # Generate a random salt
+    salt = secrets.token_hex(32)
+    # Hash with PBKDF2
+    pwd_hash = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    )
+    # Return salt + hash
+    return f"{salt}${pwd_hash.hex()}"
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password"""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        salt, pwd_hash = hashed_password.split('$')
+        new_hash = hashlib.pbkdf2_hmac(
+            'sha256',
+            plain_password.encode('utf-8'),
+            salt.encode('utf-8'),
+            100000
+        )
+        return new_hash.hex() == pwd_hash
+    except (ValueError, AttributeError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password"""
-    return pwd_context.hash(password)
+    return hash_password(password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

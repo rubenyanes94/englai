@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import apiClient, { handleApiError } from '../api/client';
 
 interface Props {
   onBack: () => void;
@@ -11,6 +12,7 @@ type PaymentMethod = 'mastercard' | 'pagomovil' | 'paypal' | 'binance';
 const Auth: React.FC<Props> = ({ onBack, onSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   
   // Modal States
@@ -50,18 +52,44 @@ const Auth: React.FC<Props> = ({ onBack, onSuccess }) => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit()) return;
     
     setLoading(true);
+    setError(null);
     
-    setTimeout(() => {
+    try {
+      if (mode === 'login') {
+        // Login
+        const user = await apiClient.login({
+          email: formData.email,
+          password: formData.password
+        });
+        
+        onSuccess({ name: user.first_name });
+      } else {
+        // Register
+        const user = await apiClient.register({
+          email: formData.email,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          password: formData.password,
+          confirm_password: formData.confirmPassword
+        });
+        
+        // Login after registration
+        await apiClient.login({
+          email: formData.email,
+          password: formData.password
+        });
+        
+        onSuccess({ name: user.first_name });
+      }
+    } catch (err) {
+      setError(handleApiError(err));
       setLoading(false);
-      onSuccess({ 
-        name: mode === 'register' ? formData.firstName : (formData.email.split('@')[0] || 'Miguel')
-      });
-    }, 1500);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,6 +314,13 @@ const Auth: React.FC<Props> = ({ onBack, onSuccess }) => {
             {mode === 'login' ? 'Ingresa para continuar aprendiendo.' : 'Inicia tu camino hoy mismo.'}
           </p>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl">
+            <p className="text-sm text-red-600 font-semibold">{error}</p>
+          </div>
+        )}
 
         {/* Tab Selector */}
         <div className="bg-slate-50 p-1.5 rounded-2xl flex items-center mb-8 border border-slate-100">
